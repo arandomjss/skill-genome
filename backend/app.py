@@ -5,7 +5,7 @@ import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from flask import Flask
-from backend.routes import api
+from app.routes import api
 
 app = Flask(__name__)
 
