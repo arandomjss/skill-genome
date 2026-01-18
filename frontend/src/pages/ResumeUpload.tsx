@@ -1,6 +1,9 @@
-import React, { useState } from 'react';
-import { motion } from 'framer-motion';
-import { Upload, FileText, Loader, CheckCircle, Target, AlertCircle, Briefcase } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import {
+    Upload, FileText, Loader2, CheckCircle, Target,
+    AlertCircle, Briefcase, Sparkles, ArrowRight, BookOpen, X
+} from 'lucide-react';
 
 interface Skill {
     name: string;
@@ -39,63 +42,41 @@ const ResumeUpload: React.FC = () => {
     const [selectedSector, setSelectedSector] = useState<string>('Technology');
     const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
     const userId = localStorage.getItem('user_id');
+    const timeoutRef = useRef<NodeJS.Timeout | null>(null);
 
     const sectors = ['Technology', 'Marketing', 'HR', 'Finance', 'Design', 'Healthcare'];
 
-    // Fetch available roles on component mount
-    React.useEffect(() => {
+    useEffect(() => {
         const fetchRoles = async () => {
             try {
                 const response = await fetch('http://localhost:5000/api/roles');
                 const data = await response.json();
                 if (response.ok && data.roles) {
                     setRoles(data.roles);
-                    if (data.roles.length > 0) {
-                        setSelectedRole(data.roles[0]);
-                    }
+                    if (data.roles.length > 0) setSelectedRole(data.roles[0]);
                 }
-            } catch (error) {
-                console.error('Failed to fetch roles:', error);
-            }
+            } catch (error) { console.error('Failed to fetch roles:', error); }
         };
         fetchRoles();
     }, []);
 
     const handleDrag = (e: React.DragEvent) => {
         e.preventDefault();
-        e.stopPropagation();
-        if (e.type === "dragenter" || e.type === "dragover") {
-            setDragActive(true);
-        } else if (e.type === "dragleave") {
-            setDragActive(false);
-        }
+        setDragActive(e.type === "dragenter" || e.type === "dragover");
     };
 
     const handleDrop = (e: React.DragEvent) => {
         e.preventDefault();
-        e.stopPropagation();
         setDragActive(false);
-
-        if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-            setFile(e.dataTransfer.files[0]);
-        }
-    };
-
-    const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        if (e.target.files && e.target.files[0]) {
-            setFile(e.target.files[0]);
-        }
+        if (e.dataTransfer.files?.[0]) setFile(e.dataTransfer.files[0]);
     };
 
     const handleUpload = async () => {
         if (!file) return;
-
         setLoading(true);
         const formData = new FormData();
         formData.append('file', file);
-        if (selectedRole) {
-            formData.append('target_role', selectedRole);
-        }
+        if (selectedRole) formData.append('target_role', selectedRole);
         formData.append('target_sector', selectedSector);
 
         try {
@@ -103,26 +84,15 @@ const ResumeUpload: React.FC = () => {
                 method: 'POST',
                 body: formData
             });
-
             const data = await response.json();
-
             if (response.ok) {
-                const initialSkills = (data.skills || []).map((skill: Skill) => ({
-                    ...skill,
-                    confidence: 0.5
-                }));
+                const initialSkills = (data.skills || []).map((skill: Skill) => ({ ...skill, confidence: 0.5 }));
                 setSkills(initialSkills);
                 setRoadmap(data.roadmap || []);
-                setShowRecommendations(false);
-
-                // Save skills to localStorage for recommendations page
                 localStorage.setItem('userSkills', JSON.stringify(initialSkills));
-                if (selectedRole) {
-                    localStorage.setItem('targetRole', selectedRole);
-                }
+                if (selectedRole) localStorage.setItem('targetRole', selectedRole);
                 localStorage.setItem('targetSector', selectedSector);
 
-                // Auto-save to profile
                 if (userId && initialSkills.length > 0) {
                     await fetch(`http://localhost:5000/api/profile/${userId}/skills/bulk`, {
                         method: 'POST',
@@ -136,45 +106,31 @@ const ResumeUpload: React.FC = () => {
                         })
                     });
                 }
-            } else {
-                alert(`Error: ${data.error || 'Failed to analyze resume'}`);
             }
-        } catch (error) {
-            alert(`Network error: ${error}`);
-        } finally {
-            setLoading(false);
-        }
+        } catch (error) { console.error(error); } finally { setLoading(false); }
     };
 
-    const handleSkillChange = (index: number, newConfidence: number) => {
-        const updatedSkills = [...skills];
-        updatedSkills[index].confidence = newConfidence / 100;
-        setSkills(updatedSkills);
+    const handleLocalConfidenceChange = (idx: number, newVal: number) => {
+        const updated = [...skills];
+        updated[idx].confidence = newVal / 100;
+        setSkills(updated);
+        // Sync to local storage for persistence across pages
+        localStorage.setItem('userSkills', JSON.stringify(updated));
     };
 
     const getRecommendations = async () => {
-        const weakSkills = skills
-            .filter(skill => skill.confidence < 0.7)
-            .sort((a, b) => a.confidence - b.confidence);
-
+        setLoading(true);
+        const weakSkills = skills.filter(s => s.confidence < 0.7);
         const confidenceBasedRecs: Recommendation[] = [];
-
-        weakSkills.forEach(weakSkill => {
-            roadmap.forEach(phase => {
-                phase.skills.forEach(roadmapSkill => {
-                    if (roadmapSkill.name.toLowerCase() === weakSkill.name.toLowerCase()) {
-                        confidenceBasedRecs.push({
-                            skill: weakSkill.name,
-                            confidence: weakSkill.confidence,
-                            courses: roadmapSkill.courses,
-                            source: 'confidence'
-                        });
+        weakSkills.forEach(ws => {
+            roadmap.forEach(ph => {
+                ph.skills.forEach(rs => {
+                    if (rs.name.toLowerCase() === ws.name.toLowerCase()) {
+                        confidenceBasedRecs.push({ skill: ws.name, confidence: ws.confidence, courses: rs.courses, source: 'confidence' });
                     }
                 });
             });
         });
-
-        let gapAnalysisRecs: Recommendation[] = [];
 
         if (userId && selectedRole) {
             try {
@@ -187,304 +143,137 @@ const ResumeUpload: React.FC = () => {
                         skills: skills.map(s => ({ name: s.name, confidence: s.confidence }))
                     })
                 });
-
                 const data = await response.json();
-                if (response.ok && data.recommendations) {
-                    data.recommendations.forEach((rec: any) => {
-                        if (!rec.skill) return;
-                        const skillName = rec.skill;
-                        const skillConfidence = skills.find(s => s.name.toLowerCase() === skillName.toLowerCase())?.confidence || 0;
-                        gapAnalysisRecs.push({
-                            skill: skillName,
-                            confidence: skillConfidence,
-                            courses: rec.courses || [],
-                            source: 'gap',
-                            reason: rec.reason || 'Required for target role'
-                        });
-                    });
+                if (data.recommendations) {
+                    const uniqueRecs = [...data.recommendations.map((r: any) => ({
+                        skill: r.skill,
+                        confidence: skills.find(s => s.name.toLowerCase() === r.skill.toLowerCase())?.confidence || 0,
+                        courses: r.courses || [],
+                        source: 'gap',
+                        reason: r.reason
+                    })), ...confidenceBasedRecs];
+                    setRecommendations(uniqueRecs.filter((v, i, a) => a.findIndex(t => t.skill === v.skill) === i));
                 }
-            } catch (error) {
-                console.error('Gap analysis failed:', error);
-            }
+            } catch (err) { console.error(err); }
         }
-
-        const allRecs = [...gapAnalysisRecs, ...confidenceBasedRecs];
-        const uniqueRecs = allRecs.filter((rec, index, self) =>
-            index === self.findIndex(r => r.skill.toLowerCase() === rec.skill.toLowerCase())
-        );
-
-        setRecommendations(uniqueRecs);
+        setShowRecommendations(true);
+        setLoading(false);
     };
 
-    const weakSkillsCount = skills.filter(s => s.confidence < 0.7).length;
-
     return (
-        <div className="space-y-6">
+        <div className="space-y-8">
+            {/* HEADER */}
             <div>
-                <h1 className="text-4xl font-bold mb-2">Upload Resume</h1>
-                <p className="text-secondary">Extract skills, select your target role, and get personalized recommendations</p>
+                <h1 className="text-3xl font-black text-[#1A1C1E] tracking-tight mb-1">Analyze Resume</h1>
+                <p className="text-[#A0AEC0] font-bold text-[10px] uppercase tracking-widest">Extract DNA and bridge the gap to your target role</p>
             </div>
 
-            <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="glass-panel p-8"
-            >
-                <div
-                    onDragEnter={handleDrag}
-                    onDragLeave={handleDrag}
-                    onDragOver={handleDrag}
-                    onDrop={handleDrop}
-                    className={`border-2 border-dashed rounded-xl p-12 text-center transition-all ${dragActive ? 'border-primary bg-primary/10' : 'border-white/20 hover:border-primary/50'
+            {/* DROPZONE & SETTINGS */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <motion.div
+                    className={`lg:col-span-2 glass-panel p-8 border-2 border-dashed transition-all flex flex-col items-center justify-center text-center ${dragActive ? 'border-[#6366F1] bg-[#6366F1]/5' : 'border-[#F1F3F5] hover:border-[#6366F1]/50'
                         }`}
+                    onDragOver={handleDrag} onDragLeave={handleDrag} onDrop={handleDrop}
                 >
                     {!file ? (
                         <>
-                            <Upload className="h-16 w-16 mx-auto mb-4 text-secondary" />
-                            <h3 className="text-xl font-semibold mb-2">Drop your resume here</h3>
-                            <p className="text-secondary mb-4">or click to browse</p>
-                            <input
-                                type="file"
-                                accept=".pdf,.docx"
-                                onChange={handleFileChange}
-                                className="hidden"
-                                id="file-upload"
-                            />
-                            <label
-                                htmlFor="file-upload"
-                                className="inline-block px-6 py-3 bg-primary/20 hover:bg-primary/30 rounded-lg cursor-pointer transition-all"
-                            >
-                                Select File
-                            </label>
-                            <p className="text-xs text-secondary mt-4">Supports PDF and DOCX</p>
+                            <div className="w-16 h-16 bg-[#EEF2FF] rounded-2xl flex items-center justify-center text-[#6366F1] mb-4">
+                                <Upload className="h-8 w-8" />
+                            </div>
+                            <h3 className="text-sm font-bold text-[#1A1C1E] mb-1">Drop your resume here</h3>
+                            <p className="text-[10px] font-black text-[#A0AEC0] uppercase tracking-widest mb-6">PDF or DOCX accepted</p>
+                            <input type="file" id="file-upload" className="hidden" accept=".pdf,.docx" onChange={(e) => e.target.files?.[0] && setFile(e.target.files[0])} />
+                            <label htmlFor="file-upload" className="btn-primary !w-auto px-8 cursor-pointer">Browse Files</label>
                         </>
                     ) : (
-                        <div className="flex items-center justify-center gap-4">
-                            <FileText className="h-8 w-8 text-primary" />
+                        <div className="flex items-center gap-4">
+                            <div className="w-14 h-14 bg-[#F8F9FB] rounded-2xl flex items-center justify-center text-[#6366F1]"><FileText /></div>
                             <div className="text-left">
-                                <p className="font-semibold">{file.name}</p>
-                                <p className="text-sm text-secondary">{(file.size / 1024).toFixed(2)} KB</p>
+                                <p className="text-sm font-bold text-[#1A1C1E]">{file.name}</p>
+                                <p className="text-[10px] font-black text-[#A0AEC0]">{(file.size / 1024).toFixed(1)} KB</p>
                             </div>
-                            <button
-                                onClick={() => setFile(null)}
-                                className="ml-4 text-red-400 hover:text-red-300"
-                            >
-                                Remove
-                            </button>
+                            <button onClick={() => { setFile(null); setSkills([]); }} className="p-2 text-rose-500 hover:bg-rose-50 rounded-xl transition-colors"><X className="h-5 w-5" /></button>
                         </div>
                     )}
-                </div>
+                </motion.div>
 
-                {file && !loading && skills.length === 0 && (
-                    <button
-                        onClick={handleUpload}
-                        className="w-full mt-6 btn-primary"
-                    >
-                        Extract Skills
-                    </button>
-                )}
-
-                {loading && (
-                    <div className="mt-6 flex items-center justify-center gap-3 text-primary">
-                        <Loader className="h-5 w-5 animate-spin" />
-                        <span>Extracting skills from your resume...</span>
-                    </div>
-                )}
-            </motion.div>
-
-            {skills.length > 0 && (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <motion.div
-                        initial={{ opacity: 0, x: -20 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        className="glass-panel p-6"
-                    >
-                        <div className="flex items-center gap-3 mb-4">
-                            <Target className="h-6 w-6 text-primary" />
-                            <h2 className="text-xl font-bold">Target Sector</h2>
-                        </div>
-                        <p className="text-secondary mb-4">Select your industry</p>
-                        <select
-                            value={selectedSector}
-                            onChange={(e) => setSelectedSector(e.target.value)}
-                            className="w-full px-4 py-3 bg-background border border-white/20 rounded-lg text-white focus:border-primary focus:outline-none"
-                        >
-                            {sectors.map((sector) => (
-                                <option key={sector} value={sector} className="bg-background">
-                                    {sector}
-                                </option>
-                            ))}
+                <div className="space-y-4">
+                    <div className="glass-panel p-6">
+                        <label className="text-[10px] font-black text-[#A0AEC0] uppercase tracking-widest mb-3 block">Target Goal</label>
+                        <select value={selectedSector} onChange={(e) => setSelectedSector(e.target.value)} className="w-full bg-[#F8F9FB] border-none rounded-xl py-3 px-4 text-sm font-bold mb-3 outline-none focus:ring-2 focus:ring-[#6366F1]/20">
+                            {sectors.map(s => <option key={s} value={s}>{s}</option>)}
                         </select>
-                    </motion.div>
-
-                    <motion.div
-                        initial={{ opacity: 0, x: 20 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        className="glass-panel p-6"
-                    >
-                        <div className="flex items-center gap-3 mb-4">
-                            <Briefcase className="h-6 w-6 text-violet-400" />
-                            <h2 className="text-xl font-bold">Target Role</h2>
-                        </div>
-                        <p className="text-secondary mb-4">Select the role you want to pursue</p>
-                        <select
-                            value={selectedRole}
-                            onChange={(e) => setSelectedRole(e.target.value)}
-                            className="w-full px-4 py-3 bg-background border border-white/20 rounded-lg text-white focus:border-primary focus:outline-none"
-                        >
-                            {roles.map((role) => (
-                                <option key={role} value={role} className="bg-background">
-                                    {role}
-                                </option>
-                            ))}
+                        <select value={selectedRole} onChange={(e) => setSelectedRole(e.target.value)} className="w-full bg-[#F8F9FB] border-none rounded-xl py-3 px-4 text-sm font-bold outline-none focus:ring-2 focus:ring-[#6366F1]/20">
+                            {roles.map(r => <option key={r} value={r}>{r}</option>)}
                         </select>
-                    </motion.div>
-                </div>
-            )}
-
-            {skills.length > 0 && (
-                <motion.div
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    className="glass-panel p-6"
-                >
-                    <div className="flex items-center justify-between mb-6">
-                        <div className="flex items-center gap-3">
-                            <CheckCircle className="h-6 w-6 text-green-400" />
-                            <h2 className="text-2xl font-bold">Rate Your Skills ({skills.length})</h2>
-                        </div>
-                        {weakSkillsCount > 0 && (
-                            <div className="flex items-center gap-2 text-orange-400">
-                                <AlertCircle className="h-5 w-5" />
-                                <span className="text-sm">{weakSkillsCount} skills need improvement</span>
-                            </div>
-                        )}
                     </div>
-                    <p className="text-secondary mb-6">Adjust the sliders to rate your proficiency (0-100%)</p>
+                    {file && !skills.length && (
+                        <button onClick={handleUpload} disabled={loading} className="btn-primary">
+                            {loading ? <Loader2 className="animate-spin h-5 w-5" /> : 'Extract Skills'}
+                        </button>
+                    )}
+                </div>
+            </div>
 
-                    <div className="space-y-4">
+            {/* SKILL RATINGS (Compact Format) */}
+            {skills.length > 0 && (
+                <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="space-y-4">
+                    <div className="flex items-center justify-between px-2">
+                        <h2 className="text-sm font-black text-[#1A1C1E] uppercase tracking-tight">Rate Your Extracted Skills</h2>
+                        <span className="text-[10px] font-bold text-[#A0AEC0] uppercase">{skills.length} skills found</span>
+                    </div>
+                    <div className="space-y-2">
                         {skills.map((skill, idx) => (
-                            <div key={idx} className="bg-surface/50 rounded-lg p-4">
-                                <div className="flex justify-between items-center mb-3">
-                                    <span className="font-semibold">{skill.name}</span>
-                                    <div className="flex items-center gap-2">
-                                        <input
-                                            type="number"
-                                            min="0"
-                                            max="100"
-                                            value={Math.round(skill.confidence * 100)}
-                                            onChange={(e) => handleSkillChange(idx, parseInt(e.target.value) || 0)}
-                                            className="w-16 px-2 py-1 bg-background rounded text-center text-sm"
-                                        />
-                                        <span className="text-sm text-secondary">%</span>
+                            <div key={idx} className="glass-panel p-4 flex items-center gap-6 group">
+                                <div className="w-1/4 min-w-0">
+                                    <p className="text-sm font-bold text-[#1A1C1E] truncate">{skill.name}</p>
+                                    <p className="text-[9px] font-black text-[#A0AEC0] uppercase">Extracted from Resume</p>
+                                </div>
+                                <div className="flex-1 flex items-center gap-4">
+                                    <span className="text-[10px] font-black text-[#6366F1] w-8">{Math.round(skill.confidence * 100)}%</span>
+                                    <div className="relative flex-1 h-2.5 bg-[#F1F3F5] rounded-full overflow-hidden">
+                                        <div className="h-full bg-[#6366F1] rounded-full transition-all" style={{ width: `${skill.confidence * 100}%` }} />
+                                        <input type="range" min="0" max="100" value={skill.confidence * 100} onChange={(e) => handleLocalConfidenceChange(idx, parseInt(e.target.value))} className="absolute inset-0 w-full opacity-0 cursor-pointer" />
                                     </div>
                                 </div>
-                                <input
-                                    type="range"
-                                    min="0"
-                                    max="100"
-                                    value={skill.confidence * 100}
-                                    onChange={(e) => handleSkillChange(idx, parseInt(e.target.value))}
-                                    className="w-full h-2 bg-white/10 rounded-lg appearance-none cursor-pointer slider"
-                                    style={{
-                                        background: `linear-gradient(to right, 
-                      ${skill.confidence < 0.3 ? '#ef4444' : skill.confidence < 0.7 ? '#f59e0b' : '#10b981'} 0%, 
-                      ${skill.confidence < 0.3 ? '#ef4444' : skill.confidence < 0.7 ? '#f59e0b' : '#10b981'} ${skill.confidence * 100}%, 
-                      rgba(255,255,255,0.1) ${skill.confidence * 100}%, 
-                      rgba(255,255,255,0.1) 100%)`
-                                    }}
-                                />
                             </div>
                         ))}
                     </div>
-
-                    <button
-                        onClick={async () => {
-                            setLoading(true);
-                            await getRecommendations();
-                            setShowRecommendations(true);
-                            setLoading(false);
-                        }}
-                        disabled={loading}
-                        className="w-full mt-6 btn-primary flex items-center justify-center gap-2"
-                    >
-                        {loading ? (
-                            <>
-                                <Loader className="h-5 w-5 animate-spin" />
-                                Analyzing...
-                            </>
-                        ) : (
-                            'Get Course Recommendations'
+                    <button onClick={getRecommendations} disabled={loading} className="btn-primary group !py-5">
+                        {loading ? <Loader2 className="animate-spin h-5 w-5" /> : (
+                            <>Get Course Recommendations <ArrowRight className="h-4 w-4 group-hover:translate-x-1 transition-transform" /></>
                         )}
                     </button>
                 </motion.div>
             )}
 
-            {showRecommendations && recommendations.length > 0 && (
-                <motion.div
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    className="glass-panel p-6"
-                >
-                    <div className="flex items-center gap-3 mb-6">
-                        <Target className="h-6 w-6 text-violet-400" />
-                        <h2 className="text-2xl font-bold">Recommended Courses</h2>
-                    </div>
-
-                    {recommendations.length === 0 ? (
-                        <div className="text-center py-8">
-                            <CheckCircle className="h-12 w-12 mx-auto mb-4 text-green-400" />
-                            <p className="text-lg font-semibold mb-2">Great job!</p>
-                            <p className="text-secondary">All your skills are rated above 70%. Keep up the excellent work!</p>
-                        </div>
-                    ) : (
-                        <div className="space-y-6">
-                            <p className="text-secondary">Focus on these skills to improve your profile:</p>
-                            {recommendations.map((rec, idx) => (
-                                <div key={idx} className={`border-l-4 pl-6 ${rec.source === 'gap' ? 'border-violet-500' : 'border-orange-500'}`}>
-                                    <div className="flex items-center justify-between mb-3">
-                                        <div>
-                                            <h3 className="text-xl font-bold">{rec.skill}</h3>
-                                            {rec.reason && (
-                                                <p className="text-sm text-secondary mt-1">{rec.reason}</p>
-                                            )}
-                                        </div>
-                                        <span className={`px-3 py-1 rounded-full text-sm ${rec.confidence < 0.3 ? 'bg-red-500/20 text-red-400' :
-                                            rec.confidence < 0.5 ? 'bg-orange-500/20 text-orange-400' :
-                                                'bg-yellow-500/20 text-yellow-400'
-                                            }`}>
-                                            {Math.round(rec.confidence * 100)}% proficiency
-                                        </span>
-                                    </div>
-
-                                    {rec.courses.length > 0 ? (
-                                        <div className="space-y-2">
-                                            {rec.courses.map((course, courseIdx) => (
-                                                <a
-                                                    key={courseIdx}
-                                                    href={course.url}
-                                                    target="_blank"
-                                                    rel="noopener noreferrer"
-                                                    className="block p-4 bg-surface/50 hover:bg-surface/70 rounded-lg transition-all"
-                                                >
-                                                    <div className="flex items-center justify-between">
-                                                        <div>
-                                                            <p className="font-medium">{course.title}</p>
-                                                            <p className="text-sm text-secondary mt-1">{course.platform}</p>
-                                                        </div>
-                                                        <span className="text-primary">→</span>
-                                                    </div>
-                                                </a>
-                                            ))}
-                                        </div>
-                                    ) : (
-                                        <p className="text-secondary text-sm">No courses available for this skill yet.</p>
-                                    )}
+            {/* RECOMMENDATIONS (Bento Style) */}
+            {showRecommendations && (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    {recommendations.map((rec, idx) => (
+                        <div key={idx} className="glass-panel p-6 flex flex-col justify-between hover:bg-white transition-all">
+                            <div>
+                                <div className="flex justify-between items-start mb-4">
+                                    <h3 className="text-md font-black text-[#1A1C1E]">{rec.skill}</h3>
+                                    <span className={`text-[9px] font-black px-2 py-1 rounded-full uppercase ${rec.source === 'gap' ? 'bg-indigo-50 text-[#6366F1]' : 'bg-amber-50 text-amber-500'}`}>
+                                        {rec.source}
+                                    </span>
                                 </div>
-                            ))}
+                                <div className="space-y-2">
+                                    {rec.courses.map((c, ci) => (
+                                        <a key={ci} href={c.url} target="_blank" className="flex items-center justify-between p-3 bg-[#F8F9FB] rounded-xl hover:bg-[#EEF2FF] transition-colors group">
+                                            <div className="min-w-0">
+                                                <p className="text-xs font-bold text-[#1A1C1E] truncate">{c.title}</p>
+                                                <p className="text-[9px] font-black text-[#A0AEC0] uppercase">{c.platform}</p>
+                                            </div>
+                                            <ArrowRight className="h-3 w-3 text-[#CBD5E0] group-hover:text-[#6366F1] transition-all" />
+                                        </a>
+                                    ))}
+                                </div>
+                            </div>
                         </div>
-                    )}
-                </motion.div>
+                    ))}
+                </div>
             )}
         </div>
     );

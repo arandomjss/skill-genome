@@ -1,6 +1,16 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
-import { Save, User2 } from 'lucide-react';
+import {
+  Save,
+  User2,
+  Mail,
+  Briefcase,
+  MapPin,
+  Sparkles,
+  Loader2,
+  CheckCircle,
+  Target // Repaired: Added missing icon import
+} from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 type ProfileUser = {
@@ -28,7 +38,7 @@ type RolesResponse = {
   error?: string;
 };
 
-const SECTORS = ['Healthcare', 'Agriculture', 'Urban'] as const;
+const SECTORS = ['Healthcare', 'Agriculture', 'Urban', 'Technology', 'Finance'] as const;
 
 const Profile: React.FC = () => {
   const apiBaseUrl = useMemo(
@@ -36,7 +46,6 @@ const Profile: React.FC = () => {
     []
   );
   const navigate = useNavigate();
-
   const userId = localStorage.getItem('user_id');
 
   const [loading, setLoading] = useState(true);
@@ -49,7 +58,7 @@ const Profile: React.FC = () => {
 
   // Editable fields
   const [name, setName] = useState('');
-  const [targetSector, setTargetSector] = useState<string>('Healthcare');
+  const [targetSector, setTargetSector] = useState<string>('Technology');
   const [targetRole, setTargetRole] = useState<string>('software engineer');
 
   const forceLogout = () => {
@@ -60,8 +69,6 @@ const Profile: React.FC = () => {
 
   const load = async () => {
     setError(null);
-    setSuccess(null);
-
     if (!userId) {
       setError('Missing user_id. Please log in again.');
       setLoading(false);
@@ -70,50 +77,30 @@ const Profile: React.FC = () => {
 
     setLoading(true);
     try {
+      // Load Main Profile Data
       const profileRes = await fetch(`${apiBaseUrl}/api/profile/${userId}`);
-      let profileJson: ProfileResponse | null = null;
-      try {
-        profileJson = (await profileRes.json()) as ProfileResponse;
-      } catch {
-        profileJson = null;
-      }
-
       if (profileRes.status === 401 || profileRes.status === 404) {
         forceLogout();
         return;
       }
-      if (!profileRes.ok) {
-        throw new Error(profileJson?.error || 'Failed to load profile');
-      }
 
-      if (!profileJson) {
-        throw new Error('Failed to parse profile response');
-      }
+      const profileJson = (await profileRes.json()) as ProfileResponse;
+      if (!profileRes.ok) throw new Error(profileJson?.error || 'Failed to load profile');
 
       setUser(profileJson.user);
       setName(String(profileJson.user?.name || ''));
-      setTargetSector(String(profileJson.user?.target_sector || 'Healthcare'));
+      setTargetSector(String(profileJson.user?.target_sector || 'Technology'));
       setTargetRole(String(profileJson.user?.target_role || 'software engineer'));
 
-      // Fetch available roles list (best-effort)
+      // Fetch Available Roles (Best Effort)
       const rolesUrl = new URL(`${apiBaseUrl}/api/pathways/tree`);
       rolesUrl.searchParams.set('user_id', userId);
       const rolesRes = await fetch(rolesUrl.toString());
-      let rolesJson: RolesResponse | null = null;
-      try {
-        rolesJson = (await rolesRes.json()) as RolesResponse;
-      } catch {
-        rolesJson = null;
-      }
-
-      if (rolesRes.status === 401 || rolesRes.status === 404) {
-        forceLogout();
-        return;
-      }
-      if (rolesRes.ok && rolesJson && Array.isArray(rolesJson.available_roles)) {
-        setAvailableRoles(rolesJson.available_roles);
-      } else {
-        setAvailableRoles([]);
+      if (rolesRes.ok) {
+        const rolesJson = (await rolesRes.json()) as RolesResponse;
+        if (Array.isArray(rolesJson.available_roles)) {
+          setAvailableRoles(rolesJson.available_roles);
+        }
       }
     } catch (e: any) {
       setError(e?.message || 'Failed to load profile');
@@ -124,17 +111,12 @@ const Profile: React.FC = () => {
 
   useEffect(() => {
     load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const save = async () => {
     setError(null);
     setSuccess(null);
-
-    if (!userId) {
-      setError('Missing user_id. Please log in again.');
-      return;
-    }
+    if (!userId) return;
 
     setSaving(true);
     try {
@@ -148,26 +130,21 @@ const Profile: React.FC = () => {
         }),
       });
 
-      let json: any = null;
-      try {
-        json = await res.json();
-      } catch {
-        json = null;
-      }
-
       if (res.status === 401 || res.status === 404) {
         forceLogout();
         return;
       }
+
       if (!res.ok) {
+        const json = await res.json();
         throw new Error(json?.error || 'Failed to save profile');
       }
 
-      // Keep localStorage in sync for pages that still read it
+      // Keep localStorage in sync for other components
       localStorage.setItem('targetRole', targetRole);
       localStorage.setItem('targetSector', targetSector);
 
-      setSuccess('Profile saved');
+      setSuccess('Profile successfully updated');
       await load();
     } catch (e: any) {
       setError(e?.message || 'Failed to save profile');
@@ -176,130 +153,160 @@ const Profile: React.FC = () => {
     }
   };
 
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-[60vh]">
+        <Loader2 className="h-10 w-10 animate-spin text-[#6366F1]" />
+      </div>
+    );
+  }
+
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-4xl font-bold mb-2">Profile</h1>
-        <p className="text-secondary">Set your career goal once and use it everywhere</p>
+    <div className="space-y-8 pb-12">
+      {/* PAGE HEADER */}
+      <div className="px-4">
+        <h1 className="text-3xl font-black text-[#1A1C1E] tracking-tight mb-1">Account Settings</h1>
+        <p className="text-[#A0AEC0] font-bold text-[10px] uppercase tracking-widest">Define your professional identity and career goals</p>
       </div>
 
-      {error && (
-        <div className="p-4 bg-red-500/10 border border-red-500/20 rounded-lg text-red-200">
-          {error}
-        </div>
-      )}
-      {success && (
-        <div className="p-4 bg-emerald-500/10 border border-emerald-500/20 rounded-lg text-emerald-200">
-          {success}
-        </div>
-      )}
-
-      <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="glass-panel p-6">
-        {loading ? (
-          <div className="text-secondary">Loading profile…</div>
-        ) : (
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            <div className="lg:col-span-1">
-              <div className="glass-panel p-5">
-                <div className="flex items-center gap-3">
-                  <div className="h-12 w-12 rounded-full bg-gradient-to-r from-blue-500 to-violet-500 flex items-center justify-center">
-                    <User2 className="h-6 w-6" />
-                  </div>
-                  <div className="min-w-0">
-                    <p className="text-lg font-bold truncate">{user?.username || 'User'}</p>
-                    <p className="text-xs text-secondary truncate">{user?.email || '—'}</p>
-                  </div>
-                </div>
-
-                <div className="mt-5 space-y-3">
-                  <div>
-                    <p className="text-xs text-secondary">User ID</p>
-                    <p className="text-sm font-medium truncate">{user?.user_id || userId || '—'}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-secondary">Current goal</p>
-                    <p className="text-sm font-medium">
-                      {(user?.target_sector || targetSector || '—') + ' • ' + (user?.target_role || targetRole || '—')}
-                    </p>
-                  </div>
-                </div>
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 px-4 font-sans text-[#1A1C1E]">
+        {/* LEFT COLUMN: IDENTITY CARD */}
+        <div className="lg:col-span-1 space-y-6">
+          <motion.div
+            initial={{ opacity: 0, x: -20 }}
+            animate={{ opacity: 1, x: 0 }}
+            className="glass-panel p-8 bg-white text-center shadow-sm"
+          >
+            <div className="relative inline-block mb-6">
+              <div className="h-24 w-24 rounded-[2rem] bg-gradient-to-tr from-[#6366F1] to-[#A855F7] flex items-center justify-center shadow-xl shadow-[#6366F1]/20">
+                <User2 className="h-10 w-10 text-white" />
+              </div>
+              <div className="absolute -bottom-2 -right-2 w-8 h-8 bg-white rounded-xl shadow-md flex items-center justify-center">
+                <Sparkles className="h-4 w-4 text-[#6366F1]" />
               </div>
             </div>
 
-            <div className="lg:col-span-2">
-              <div className="glass-panel p-5">
-                <h2 className="text-xl font-bold mb-4">Career Goal</h2>
+            <h2 className="text-xl font-black mb-1">{user?.username || 'Professional'}</h2>
+            <p className="text-[10px] font-black text-[#A0AEC0] uppercase tracking-widest mb-6">Student</p>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm text-secondary mb-2">Name</label>
-                    <input
-                      value={name}
-                      onChange={(e) => setName(e.target.value)}
-                      placeholder="Your name"
-                      className="w-full px-4 py-3 bg-surface border border-white/10 rounded-lg text-white placeholder:text-secondary focus:outline-none focus:ring-2 focus:ring-primary/50"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm text-secondary mb-2">Target sector</label>
-                    <select
-                      value={targetSector}
-                      onChange={(e) => setTargetSector(e.target.value)}
-                      className="w-full px-4 py-3 bg-surface border border-white/10 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-primary/50"
-                    >
-                      {SECTORS.map((s) => (
-                        <option key={s} value={s}>
-                          {s}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div className="md:col-span-2">
-                    <label className="block text-sm text-secondary mb-2">Target role</label>
-                    {availableRoles.length > 0 ? (
-                      <select
-                        value={targetRole}
-                        onChange={(e) => setTargetRole(e.target.value)}
-                        className="w-full px-4 py-3 bg-surface border border-white/10 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-primary/50"
-                      >
-                        {availableRoles.map((r) => (
-                          <option key={r} value={r}>
-                            {r}
-                          </option>
-                        ))}
-                      </select>
-                    ) : (
-                      <input
-                        value={targetRole}
-                        onChange={(e) => setTargetRole(e.target.value)}
-                        placeholder="e.g., software engineer"
-                        className="w-full px-4 py-3 bg-surface border border-white/10 rounded-lg text-white placeholder:text-secondary focus:outline-none focus:ring-2 focus:ring-primary/50"
-                      />
-                    )}
-                    <p className="text-xs text-secondary mt-2">
-                      This role becomes the default for Recommendations and Career Pathways.
-                    </p>
-                  </div>
+            <div className="space-y-4 pt-6 border-t border-[#F8F9FB]">
+              <div className="flex items-center gap-3 text-left">
+                <div className="p-2 bg-[#F8F9FB] rounded-lg">
+                  <Mail className="h-4 w-4 text-[#6366F1]" />
                 </div>
+                <div className="min-w-0">
+                  <p className="text-[9px] font-black text-[#A0AEC0] uppercase tracking-tighter">Email Address</p>
+                  <p className="text-sm font-bold truncate">{user?.email || '—'}</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-3 text-left">
+                <div className="p-2 bg-[#F8F9FB] rounded-lg">
+                  <Briefcase className="h-4 w-4 text-[#6366F1]" />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-[9px] font-black text-[#A0AEC0] uppercase tracking-tighter">Target Path</p>
+                  <p className="text-sm font-bold truncate">{targetRole}</p>
+                </div>
+              </div>
+            </div>
+          </motion.div>
 
-                <div className="mt-6 flex justify-end">
-                  <button
-                    type="button"
-                    onClick={save}
-                    disabled={saving}
-                    className="px-5 py-3 rounded-lg bg-primary/20 text-primary hover:bg-primary/30 transition-all flex items-center gap-2 disabled:opacity-50"
+          {success && (
+            <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="p-4 bg-emerald-50 rounded-2xl border border-emerald-100 flex items-center gap-3 text-emerald-600">
+              <CheckCircle className="h-5 w-5" />
+              <span className="text-xs font-black uppercase tracking-tight">{success}</span>
+            </motion.div>
+          )}
+
+          {error && (
+            <div className="p-4 bg-rose-50 rounded-2xl border border-rose-100 text-rose-500 text-xs font-black uppercase tracking-tight">
+              {error}
+            </div>
+          )}
+        </div>
+
+        {/* RIGHT COLUMN: CAREER GOAL FORM */}
+        <div className="lg:col-span-2">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="glass-panel p-10 bg-white shadow-sm"
+          >
+            <div className="flex items-center gap-3 mb-10">
+              <div className="w-10 h-10 bg-[#6366F1]/10 rounded-xl flex items-center justify-center">
+                <Target className="h-6 w-6 text-[#6366F1]" />
+              </div>
+              <h2 className="text-2xl font-black tracking-tight">Career Architecture</h2>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+              <div className="md:col-span-2">
+                <label className="block text-[10px] font-black text-[#A0AEC0] uppercase tracking-widest mb-4 ml-2">Full Legal Name</label>
+                <input
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder="e.g. Alex Johnson"
+                  className="input-field"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-black text-[#A0AEC0] uppercase tracking-widest mb-4 ml-2">Target Sector</label>
+                <div className="relative">
+                  <MapPin className="absolute left-5 top-1/2 -translate-y-1/2 h-5 w-5 text-[#CBD5E0]" />
+                  <select
+                    value={targetSector}
+                    onChange={(e) => setTargetSector(e.target.value)}
+                    className="input-field pl-14 appearance-none cursor-pointer outline-none"
                   >
-                    <Save className={saving ? 'h-4 w-4 animate-pulse' : 'h-4 w-4'} />
-                    {saving ? 'Saving…' : 'Save Changes'}
-                  </button>
+                    {SECTORS.map((s) => <option key={s} value={s}>{s}</option>)}
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-black text-[#A0AEC0] uppercase tracking-widest mb-4 ml-2">Target Role</label>
+                <div className="relative">
+                  <Briefcase className="absolute left-5 top-1/2 -translate-y-1/2 h-5 w-5 text-[#CBD5E0]" />
+                  {availableRoles.length > 0 ? (
+                    <select
+                      value={targetRole}
+                      onChange={(e) => setTargetRole(e.target.value)}
+                      className="input-field pl-14 appearance-none cursor-pointer outline-none"
+                    >
+                      {availableRoles.map((r) => <option key={r} value={r}>{r}</option>)}
+                    </select>
+                  ) : (
+                    <input
+                      value={targetRole}
+                      onChange={(e) => setTargetRole(e.target.value)}
+                      placeholder="e.g. software engineer"
+                      className="input-field pl-14"
+                    />
+                  )}
                 </div>
               </div>
             </div>
-          </div>
-        )}
-      </motion.div>
+
+            <div className="mt-12 pt-8 border-t border-[#F8F9FB] flex justify-end">
+              <button
+                onClick={save}
+                disabled={saving}
+                className="btn-primary !w-auto px-10 group active:scale-95 transition-all"
+              >
+                {saving ? (
+                  <Loader2 className="h-5 w-5 animate-spin" />
+                ) : (
+                  <>
+                    <Save className="h-4 w-4" />
+                    <span className="uppercase tracking-widest text-[10px] font-black">Save Architecture</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </motion.div>
+        </div>
+      </div>
     </div>
   );
 };
