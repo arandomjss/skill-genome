@@ -6,6 +6,23 @@ import requests
 import os
 from urllib.parse import urlparse
 from datetime import datetime, timezone
+import time
+
+
+# Simple in-memory cache to avoid burning GitHub rate limits during demos.
+# Keyed by username. Value: (expires_at_epoch_seconds, repos_list)
+_REPOS_CACHE = {}
+
+
+def _cache_ttl_seconds() -> int:
+    try:
+        return int(os.getenv('GITHUB_CACHE_TTL_SECONDS', '600'))
+    except Exception:
+        return 600
+
+
+def _has_github_token() -> bool:
+    return bool(os.getenv('GITHUB_TOKEN', '').strip())
 
 
 def _github_headers():
@@ -44,6 +61,10 @@ def fetch_repo_languages(languages_url: str):
     try:
         if not languages_url:
             return {}
+        # Per-repo language breakdown is expensive (1 API call per repo).
+        # Only allow it when a token is configured.
+        if not _has_github_token():
+            return {}
         res = requests.get(languages_url, headers=_github_headers(), timeout=10)
         if res.status_code != 200:
             return {}
@@ -54,7 +75,19 @@ def fetch_repo_languages(languages_url: str):
 
 
 def fetch_user_repos(username: str):
-    url = f"https://api.github.com/users/{username}/repos"
+    if not username:
+        return None, {"error": "Missing GitHub username"}
+
+    now = time.time()
+    cached = _REPOS_CACHE.get(username)
+    if cached:
+        expires_at, repos = cached
+        if isinstance(expires_at, (int, float)) and expires_at > now and isinstance(repos, list):
+            return repos, None
+
+    # Keep this as a single request to avoid rate limiting.
+    # Note: unauthenticated requests are limited to 60/hour.
+    url = f"https://api.github.com/users/{username}/repos?per_page=100&sort=updated"
     response = requests.get(url, headers=_github_headers(), timeout=10)
 
     if response.status_code == 404:
@@ -78,6 +111,10 @@ def fetch_user_repos(username: str):
     if not isinstance(repos, list):
         return None, {"error": "GitHub API returned unexpected response"}
 
+    ttl = _cache_ttl_seconds()
+    if ttl > 0:
+        _REPOS_CACHE[username] = (now + ttl, repos)
+
     return repos, None
 
 
@@ -95,6 +132,7 @@ def build_projects_and_skills(
     language_bytes = {}
 
     remaining_language_calls = max(int(language_call_limit or 0), 0)
+    allow_language_breakdown = bool(include_language_breakdown) and remaining_language_calls > 0 and _has_github_token()
 
     for repo in repos[:project_limit]:
         # repo primary language
@@ -103,16 +141,11 @@ def build_projects_and_skills(
             skills_extracted.add(primary_lang)
             language_count[primary_lang] = language_count.get(primary_lang, 0) + 1
 
-        # topics as skills (requires topics enabled; may be empty)
-        topics = repo.get('topics') or []
-        for topic in topics:
-            try:
-                skills_extracted.add(str(topic).title())
-            except Exception:
-                continue
+        # IMPORTANT: Skills are derived ONLY from programming languages.
+        topics = []
 
         language_breakdown = {}
-        if include_language_breakdown and remaining_language_calls > 0:
+        if allow_language_breakdown and remaining_language_calls > 0:
             remaining_language_calls -= 1
             language_breakdown = fetch_repo_languages(repo.get('languages_url'))
             for lang, bytes_count in (language_breakdown or {}).items():
@@ -135,7 +168,7 @@ def build_projects_and_skills(
 
     # Derive skills: prefer bytes (more informative) if we fetched any
     skills = []
-    if include_language_breakdown and language_bytes:
+    if allow_language_breakdown and language_bytes:
         total_bytes = max(sum(language_bytes.values()), 1)
         for lang, bytes_count in sorted(language_bytes.items(), key=lambda x: x[1], reverse=True):
             confidence = min(bytes_count / total_bytes, 1.0)

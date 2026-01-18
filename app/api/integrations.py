@@ -203,6 +203,12 @@ def import_from_github():
             '1', 'true', 'yes', 'on'
         }
 
+        # Rate-limit friendly behavior:
+        # - we always derive skills only from repo languages
+        # - per-repo language breakdown is only useful when a token is set; if not, ignore
+        if include_language_breakdown and not os.getenv('GITHUB_TOKEN', '').strip():
+            include_language_breakdown = False
+
         if not github_username and github_url:
             github_username = parse_github_username(github_url)
         
@@ -271,7 +277,7 @@ def import_from_github():
                     project['name'],
                     project['description'],
                     user.get('target_sector', 'Tech'),
-                    json.dumps([project.get('language')] + (project.get('topics') or [])),
+                    json.dumps([project.get('language')] if project.get('language') else []),
                     project['url'],
                     project['updated_at']
                 ))
