@@ -1,104 +1,151 @@
-# SkillGenome - Resume Analysis & Course Suggestion
+# SkillGenome (Career Architect)
 
-A powerful tool that extracts skills from resumes, suggests relevant courses, and provides a learning roadmap. It bridges the gap between current skills and target role requirements using AI-driven analysis.
+SkillGenome is a full-stack “Career Architect” platform that turns a user’s resume + GitHub activity into a living skill profile, then computes role-based gaps and produces an explainable learning roadmap (skills, courses, and pathway phases).
 
-## 🚀 Key Features
-- **User Profile Management**: Create and manage user profiles with target roles and sectors.
-- **Resume Analysis**: Extract skills from PDF/DOCX resumes automatically.
-- **Gap Analysis**: specialized algorithms to identify missing skills and provide a readiness score.
-- **Smart Recommendations**: Suggests courses and projects to bridge skill gaps.
-- **LinkedIn Integration**: Mock capabilities to import skills and courses.
-- **Living System**: Tracks user progression over time.
+## GitHub Repository Guidelines (IEEE AUSB)
 
-## 🛠️ Tech Stack
-- **Backend**: Python, Flask
-- **Database**: SQLite (SQLAlchemy)
-- **AI/NLP**: spaCy, KeyBERT, Sentence Transformers
-- **File Parsing**: pdfplumber, python-docx
-- **Testing**: Pytest
+This repository must meet the hackathon submission requirements:
 
-## 🚀 Setup & Installation
+1) **Access**
+- The repository must be **Public**.
+- Add **IEEE AUSB** as a contributor: https://github.com/IEEE-Ahmedabad-University-SB-Official
 
-### 1. Clone & Install Dependencies
+2) **README requirements** (fulfilled below)
+- Project overview & features
+- Tech stack
+- Setup steps & how to run locally (copy‑paste commands)
+- Environment variable examples
+- Test login credentials (if needed)
+- Basic error handling
+- Confirmation of no secrets in the repo
+
+## Project Overview & Features
+
+- **User profiles**: persist skills, projects, and career goal (sector + target role)
+- **Resume analysis**: extract skills from PDF/DOCX
+- **GitHub import**: infer skills from repos/languages and save as projects/skills
+- **Gap analysis**: compute readiness score + missing/weak skills for a target role
+- **Recommendations**: course/video suggestions per skill gap
+- **Career Pathways**: role-based skill tree (foundation → core → advanced → projects)
+
+## Tech Stack
+
+**Backend**
+- Python + Flask
+- SQLite
+- NLP/AI: spaCy, KeyBERT, Sentence Transformers
+- Parsing: pdfplumber, python-docx
+
+**Frontend**
+- React + TypeScript
+- Vite
+- TailwindCSS
+- Framer Motion
+
+## Setup & Run Locally (Copy‑Paste)
+
+### Prerequisites
+
+- Python 3.x
+- Node.js 20+ (for Vite)
+
+### 1) Backend setup
+
 ```bash
-git clone <repository-url>
-cd Stack-Overflowed
 pip install -r requirements.txt
 python -m spacy download en_core_web_sm
-```
-
-### 2. Initialize Database
-```bash
 python app/init_db.py
-```
-
-### 3. Start the Server
-```bash
 python start_server.py
 ```
-The server will run at: **http://localhost:5000**
 
-## 🧪 How to Test
+Backend runs at:
+- `http://localhost:5000`
+- Health check: `http://localhost:5000/health`
 
-### Automated System Test
-Run the full system verification script:
+### 2) Frontend setup
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+Frontend runs at (Vite default):
+- `http://localhost:5173`
+
+### 3) (Optional) Configure frontend API base URL
+
+If your backend isn’t `http://localhost:5000`, create `frontend/.env`:
+
+```env
+VITE_API_BASE_URL=http://localhost:5000
+```
+
+## Environment Variables (Examples)
+
+Create a root `.env` (optional for local dev):
+
+```env
+# Flask
+FLASK_APP=start_server.py
+FLASK_ENV=development
+SECRET_KEY=dev_only_change_me
+
+# Optional: GitHub API token (recommended to avoid rate limits)
+# NOTE: Token is read from environment only (not stored in UI).
+GITHUB_TOKEN=ghp_your_token_here
+```
+
+## Test Login Credentials (Demo)
+
+If you want a predictable demo login, run:
+
+```bash
+python test_auth.py
+```
+
+It registers and logs in with:
+- Username: `testuser`
+- Password: `password123`
+
+If the user already exists, either delete `skillgenome.db` and re-run `python app/init_db.py`, or register a different username in the UI.
+
+## API Smoke Test (Recommended)
+
+With the backend running, execute:
+
 ```bash
 python test_system.py
 ```
-This script acts as a test client that:
-1. Creates a test user
-2. Adds skills
-3. Runs gap analysis
-4. Verifies all API endpoints
 
-## 🔐 Environment Variables
-Create a `.env` file in the root directory (optional for local dev, but recommended for production features):
+This creates a sample profile via API, adds skills, runs gap analysis, and prints the generated `user_id`.
 
-```env
-# Example .env
-FLASK_APP=start_server.py
-FLASK_ENV=development
-SECRET_KEY=your_secret_key_here
-# DATABASE_URL=sqlite:///skillgenome.db (defaults to this if not set)
-```
+## Basic Error Handling / Troubleshooting
 
-## 📚 API Quick Reference
+### Common API responses
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| POST | `/api/profile` | Create a new user profile |
-| POST | `/api/resume/analyze` | Upload resume for analysis |
-| POST | `/api/gap-analysis/<user_id>` | Run gap analysis for target role |
-| post | `/api/profile/<user_id>/skills` | Manually add a skill |
+- `400 Bad Request`: missing required JSON fields (e.g., `target_role`)
+- `401 Unauthorized`: missing/invalid session (log in again)
+- `404 Not Found` / `{"error":"User not found"}`: your browser has a stale `user_id` (log out/log in to refresh)
+- `500 Internal Server Error`: check backend terminal logs for the stack trace
 
-### Example: Run Gap Analysis
+### Port already in use (Windows)
+
 ```bash
-curl -X POST http://localhost:5000/api/gap-analysis/<USER_ID> \
-  -H "Content-Type: application/json" \
-  -d '{"target_role":"data scientist","target_sector":"Healthcare"}'
-```
-
-## 🔧 Troubleshooting / Error Handling
-
-### Port Already in Use
-If port 5000 is taken:
-```bash
-# Windows (PowerShell)
 netstat -ano | findstr :5000
 taskkill /PID <PID> /F
 ```
 
-### Database Errors
-If you encounter database schema errors, reset the DB:
+### Database reset
+
 ```bash
 rm skillgenome.db
 python app/init_db.py
 ```
 
-### Missing Dependencies
-Ensure all packages are up to date:
-```bash
-pip install -r requirements.txt --upgrade
-```
+## Confirmation: No Secrets in This Repo
 
----
+- No secrets are committed intentionally.
+- API tokens (e.g., `GITHUB_TOKEN`) must be provided via environment variables and should **never** be committed.
+- Recommended: add `.env` files to `.gitignore` (and verify before pushing).
+
