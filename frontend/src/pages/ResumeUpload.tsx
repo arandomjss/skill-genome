@@ -111,6 +111,12 @@ const ResumeUpload: React.FC = () => {
                 setRoadmap(data.roadmap || []);
                 setShowRecommendations(false);
 
+                // Save skills to localStorage for recommendations page
+                localStorage.setItem('userSkills', JSON.stringify(initialSkills));
+                if (selectedRole) {
+                    localStorage.setItem('targetRole', selectedRole);
+                }
+
                 // Auto-save to profile
                 if (userId && initialSkills.length > 0) {
                     await fetch(`http://localhost:5000/api/profile/${userId}/skills/bulk`, {
