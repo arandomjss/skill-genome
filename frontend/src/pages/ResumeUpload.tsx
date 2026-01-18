@@ -90,6 +90,9 @@ const ResumeUpload: React.FC = () => {
         setLoading(true);
         const formData = new FormData();
         formData.append('file', file);
+        if (selectedRole) {
+            formData.append('target_role', selectedRole);
+        }
 
         try {
             const response = await fetch('http://localhost:5000/api/resume/analyze', {
@@ -107,6 +110,21 @@ const ResumeUpload: React.FC = () => {
                 setSkills(initialSkills);
                 setRoadmap(data.roadmap || []);
                 setShowRecommendations(false);
+
+                // Auto-save to profile
+                if (userId && initialSkills.length > 0) {
+                    await fetch(`http://localhost:5000/api/profile/${userId}/skills/bulk`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            skills: initialSkills.map((s: Skill) => ({
+                                skill_name: s.name,
+                                confidence: s.confidence,
+                                source: 'resume'
+                            }))
+                        })
+                    });
+                }
             } else {
                 alert(`Error: ${data.error || 'Failed to analyze resume'}`);
             }
@@ -162,9 +180,11 @@ const ResumeUpload: React.FC = () => {
                 const data = await response.json();
                 if (response.ok && data.recommendations) {
                     data.recommendations.forEach((rec: any) => {
-                        const skillConfidence = skills.find(s => s.name.toLowerCase() === rec.skill.toLowerCase())?.confidence || 0;
+                        if (!rec.skill) return;
+                        const skillName = rec.skill;
+                        const skillConfidence = skills.find(s => s.name.toLowerCase() === skillName.toLowerCase())?.confidence || 0;
                         gapAnalysisRecs.push({
-                            skill: rec.skill,
+                            skill: skillName,
                             confidence: skillConfidence,
                             courses: rec.courses || [],
                             source: 'gap',
