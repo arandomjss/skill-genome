@@ -156,19 +156,30 @@ def bulk_add_skills(user_id):
             return jsonify({"error": "User not found"}), 404
         
         for skill in skills:
+            skill_name = skill.get('skill_name')
+            sector_context = skill.get('sector_context')
+            confidence = skill.get('confidence', 0.5)
+            source = skill.get('source', 'manual')
+            acquired_date = skill.get('acquired_date')
+            evidence = json.dumps(skill.get('evidence', []))
+
+            # 1. Try to update existing skill
             cursor.execute("""
-                INSERT INTO user_skills 
-                (user_id, skill_name, sector_context, confidence, source, acquired_date, evidence)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-            """, (
-                user_id,
-                skill.get('skill_name'),
-                skill.get('sector_context'),
-                skill.get('confidence', 0.5),
-                skill.get('source', 'manual'),
-                skill.get('acquired_date'),
-                json.dumps(skill.get('evidence', []))
-            ))
+                UPDATE user_skills 
+                SET confidence = ?, source = ?, evidence = ?
+                WHERE user_id = ? AND skill_name = ? AND (sector_context = ? OR (sector_context IS NULL AND ? IS NULL))
+            """, (confidence, source, evidence, user_id, skill_name, sector_context, sector_context))
+            
+            # 2. If no row was updated, insert new one
+            if cursor.rowcount == 0:
+                cursor.execute("""
+                    INSERT INTO user_skills 
+                    (user_id, skill_name, sector_context, confidence, source, acquired_date, evidence)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    user_id, skill_name, sector_context, confidence, 
+                    source, acquired_date, evidence
+                ))
             
         conn.commit()
         conn.close()
