@@ -61,7 +61,7 @@ const DashboardHome: React.FC = () => {
                         AI Career Architect Active
                     </div>
                     <h1 className="text-4xl font-black mb-4 leading-tight">
-                        {displayName ? `Sharpen Your Skills, ${displayName.split(' ')[0]}!` : 'Sharpen Your Professional Edge'}
+                        {displayName ? `Sharpen Your Skill, ${displayName.split(' ')[0]}!` : 'Sharpen Your Professional Edge'}
                     </h1>
                     <p className="text-white/80 font-medium mb-8 text-lg">
                         Your Skill Genome is evolving. You have {skillsTracked || 0} skills mapped—keep going to reach your target role.
